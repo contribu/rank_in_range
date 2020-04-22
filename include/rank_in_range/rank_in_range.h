@@ -10,7 +10,7 @@ namespace rank_in_range {
     
     // helpers
     // https://stackoverflow.com/questions/355967/how-to-use-msvc-intrinsics-to-get-the-equivalent-of-this-gcc-code
-    static uint32_t popcnt(uint32_t x)
+    inline uint32_t popcnt(uint32_t x)
     {
         x -= ((x >> 1) & 0x55555555);
         x = (((x >> 2) & 0x33333333) + (x & 0x33333333));
@@ -20,7 +20,7 @@ namespace rank_in_range {
         return x & 0x0000003f;
     }
     
-    static uint32_t clz(uint32_t x) {
+    inline uint32_t clz(uint32_t x) {
         x |= (x >> 1);
         x |= (x >> 2);
         x |= (x >> 4);
@@ -29,16 +29,22 @@ namespace rank_in_range {
         return 32 - popcnt(x);
     }
     
-    static uint32_t int_log2_pure(uint32_t x) {
+    inline uint32_t int_log2_pure(uint32_t x) {
         return 32 - clz(x) - 1;
     }
     
-    static uint32_t int_log2(uint32_t x) {
+    inline uint32_t int_log2(uint32_t x) {
 #ifdef __GNUC__
         return 32 - __builtin_clz(x) - 1;
 #else
         return int_log2_pure(x);
 #endif
+    }
+    
+    inline int ranker_split_center(int bg, int ed) {
+        const int level = int_log2(ed - bg);
+        const int center = ((ed - 1) >> level) << level;
+        return center;
     }
     
     struct RankResult {
@@ -87,8 +93,22 @@ namespace rank_in_range {
             
         }
         
+        int cache_count() const {
+            return cache_.size();
+        }
+        
         int remove_cache_before(int i) {
-            //
+            for(auto it = cache_.begin(); it != cache_.end();) {
+                const auto level = it->first.first;
+                const auto idx = it->first.second;
+                
+                if ((1 << level) * (idx + 1) <= i) {
+                    it = cache_.erase(it);
+                }
+                else {
+                    ++it;
+                }
+            }
         }
         
         // amortized complexity: O(log(window size))
@@ -112,16 +132,16 @@ namespace rank_in_range {
             
             const int level = int_log2(count);
             const int level_count = 1 << level;
-            const int mask = ~(level_count - 1);
-            const int center = ed & mask;
             
             // calc by merge sort for power of 2 aligned range
-            if (level_count == count  && bg % count == 0) {
-                const int idx = center / level_count;
+            if (level_count == count && bg % count == 0) {
+                const int idx = bg / level_count;
                 const auto cache = get_rank_cache(level, idx);
+                return cache->rank(x);
             }
             
             // split
+            const auto center = ranker_split_center(bg, ed);
             const auto left_rank = rank_in_range(x, bg, center);
             const auto right_rank = rank_in_range(x, center, ed);
             

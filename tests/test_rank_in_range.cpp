@@ -27,6 +27,21 @@ TEST(Helpers, int_log2_pure) {
     EXPECT_EQ(int_log2_pure(65536), 16);
 }
 
+TEST(Helpers, ranker_split_center) {
+    using namespace rank_in_range;
+    EXPECT_EQ(ranker_split_center(0, 3), 2);
+    EXPECT_EQ(ranker_split_center(0, 5), 4);
+    EXPECT_EQ(ranker_split_center(0, 6), 4);
+    EXPECT_EQ(ranker_split_center(0, 9), 8);
+    
+    EXPECT_EQ(ranker_split_center(1, 3), 2);
+    EXPECT_EQ(ranker_split_center(1, 4), 2);
+    EXPECT_EQ(ranker_split_center(1, 5), 4);
+    EXPECT_EQ(ranker_split_center(1, 6), 4);
+    EXPECT_EQ(ranker_split_center(1, 7), 4);
+    EXPECT_EQ(ranker_split_center(1, 8), 4);
+}
+
 TEST(RankCache, from_array) {
     using namespace rank_in_range;
     std::vector<int> ar({ 3, 2, 1 });
@@ -119,7 +134,7 @@ TEST(Ranker, rank_in_range) {
     EXPECT_EQ(ranker.rank_in_range(4, 1, 4).rank_ed, 3);
 }
 
-TEST(Ranker, rolling_rank) {
+TEST(Ranker, random_test) {
     using namespace rank_in_range;
     typedef std::vector<int> Array;
     Array ar;
@@ -138,4 +153,21 @@ TEST(Ranker, rolling_rank) {
             EXPECT_EQ(result.rank_ed, reference_result.rank_ed);
         }
     }
+}
+
+TEST(Ranker, remove_cache_before) {
+    using namespace rank_in_range;
+    typedef std::vector<int> Array;
+    Array ar(256);
+    Ranker<int, Array::iterator> ranker(ar.begin());
+    
+    // create cache
+    ranker.rank_in_range(0, 0, 256);
+    const auto original_cache_count = ranker.cache_count();
+    EXPECT_EQ(ranker.cache_count(), 1 + 2 + 4 + 8 + 16);
+    
+    ranker.remove_cache_before(32);
+    const auto removed_count = 1 + 2;
+    
+    EXPECT_EQ(ranker.cache_count(), original_cache_count - removed_count);
 }

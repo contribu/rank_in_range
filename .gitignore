@@ -92,3 +92,5 @@ DerivedData/
 
 *.build
 *.xcodeproj
+/Debug
+/Release
