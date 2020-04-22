@@ -1,6 +1,7 @@
 #ifndef RANK_IN_RANGE_RANK_IN_RANGE_H
 #define RANK_IN_RANGE_RANK_IN_RANGE_H
 
+#include <cmath>
 #include <algorithm>
 #include <functional>
 #include <vector>
@@ -48,9 +49,10 @@ namespace rank_in_range {
     }
     
     struct RankResult {
-        RankResult(int bg, int ed): rank_bg(bg), rank_ed(ed) {}
+        RankResult(int bg, int ed, int _nan_count): rank_bg(bg), rank_ed(ed), nan_count(_nan_count) {}
         int rank_bg;
         int rank_ed;
+        int nan_count;
     };
     
     typedef std::pair<int, int> RankCacheKey;
@@ -64,11 +66,18 @@ namespace rank_in_range {
     template <class T>
     struct RankCache {
         template <class Iter>
-        RankCache(const Iter &bg, const Iter &ed): sorted_values(bg, ed) {
+        RankCache(const Iter &bg, const Iter &ed): nan_count(0) {
+            for (auto it = bg; it != ed; ++it) {
+                if (std::isnan(*it)) {
+                    nan_count++;
+                } else {
+                    sorted_values.emplace_back(*it);
+                }
+            }
             std::sort(sorted_values.begin(), sorted_values.end());
         }
         
-        RankCache(const RankCache<T> &left, const RankCache<T> &right): sorted_values(left.sorted_values.size() + right.sorted_values.size()) {
+        RankCache(const RankCache<T> &left, const RankCache<T> &right): sorted_values(left.sorted_values.size() + right.sorted_values.size()), nan_count(left.nan_count + right.nan_count) {
             std::merge(
                        left.sorted_values.begin(),
                        left.sorted_values.end(),
@@ -80,10 +89,11 @@ namespace rank_in_range {
         RankResult rank(const T &x) const {
             const auto bg = sorted_values.begin();
             const auto ed = sorted_values.end();
-            return RankResult(std::lower_bound(bg, ed, x) - bg, std::upper_bound(bg, ed, x) - bg);
+            return RankResult(std::lower_bound(bg, ed, x) - bg, std::upper_bound(bg, ed, x) - bg, nan_count);
         }
         
         std::vector<T> sorted_values;
+        int nan_count;
     };
     
     template <class T, class Iter>
@@ -119,15 +129,18 @@ namespace rank_in_range {
             if (reference_impl || count < minimum_cache_count()) {
                 int less = 0;
                 int same = 0;
+                int nan_count = 0;
                 for (int i = bg; i < ed; i++) {
                     const auto v = x_[i];
-                    if (v < x) {
+                    if (std::isnan(v)) {
+                        nan_count++;
+                    } else if (v < x) {
                         less++;
                     } else if (v == x) {
                         same++;
                     }
                 }
-                return RankResult(less, less + same);
+                return RankResult(less, less + same, nan_count);
             }
             
             const int level = int_log2(count);
@@ -145,7 +158,7 @@ namespace rank_in_range {
             const auto left_rank = rank_in_range(x, bg, center);
             const auto right_rank = rank_in_range(x, center, ed);
             
-            return RankResult(left_rank.rank_bg + right_rank.rank_bg, left_rank.rank_ed + right_rank.rank_ed);
+            return RankResult(left_rank.rank_bg + right_rank.rank_bg, left_rank.rank_ed + right_rank.rank_ed, left_rank.nan_count + right_rank.nan_count);
         }
     private:
         static int minimum_cache_count() {

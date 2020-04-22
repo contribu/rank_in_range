@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <limits>
 #include <random>
 #include "rank_in_range/rank_in_range.h"
 
@@ -51,6 +52,19 @@ TEST(RankCache, from_array) {
     EXPECT_EQ(cache.sorted_values[0], 1);
     EXPECT_EQ(cache.sorted_values[1], 2);
     EXPECT_EQ(cache.sorted_values[2], 3);
+    EXPECT_EQ(cache.nan_count, 0);
+}
+
+TEST(RankCache, from_array_with_nan) {
+    using namespace rank_in_range;
+    std::vector<float> ar({ 3, 2, 1, std::numeric_limits<float>::quiet_NaN() });
+    RankCache<int> cache(ar.begin(), ar.end());
+    
+    ASSERT_EQ(cache.sorted_values.size(), 3);
+    EXPECT_EQ(cache.sorted_values[0], 1);
+    EXPECT_EQ(cache.sorted_values[1], 2);
+    EXPECT_EQ(cache.sorted_values[2], 3);
+    EXPECT_EQ(cache.nan_count, 1);
 }
 
 TEST(RankCache, from_rank_cache) {
@@ -69,6 +83,26 @@ TEST(RankCache, from_rank_cache) {
     EXPECT_EQ(cache.sorted_values[3], 4);
     EXPECT_EQ(cache.sorted_values[4], 5);
     EXPECT_EQ(cache.sorted_values[5], 6);
+    EXPECT_EQ(cache.nan_count, 0);
+}
+
+TEST(RankCache, from_rank_cache_with_nan) {
+    using namespace rank_in_range;
+    std::vector<float> left_ar({ 1, 2, 4, std::numeric_limits<float>::quiet_NaN() });
+    RankCache<float> left(left_ar.begin(), left_ar.end());
+    std::vector<float> right_ar({ 3, 5, 6, std::numeric_limits<float>::quiet_NaN() });
+    RankCache<float> right(right_ar.begin(), right_ar.end());
+    
+    RankCache<float> cache(left, right);
+    
+    ASSERT_EQ(cache.sorted_values.size(), 6);
+    EXPECT_EQ(cache.sorted_values[0], 1);
+    EXPECT_EQ(cache.sorted_values[1], 2);
+    EXPECT_EQ(cache.sorted_values[2], 3);
+    EXPECT_EQ(cache.sorted_values[3], 4);
+    EXPECT_EQ(cache.sorted_values[4], 5);
+    EXPECT_EQ(cache.sorted_values[5], 6);
+    EXPECT_EQ(cache.nan_count, 2);
 }
 
 TEST(RankCache, rank) {
@@ -86,6 +120,27 @@ TEST(RankCache, rank) {
     EXPECT_EQ(cache.rank(3).rank_ed, 4);
     EXPECT_EQ(cache.rank(4).rank_bg, 4);
     EXPECT_EQ(cache.rank(4).rank_ed, 4);
+    
+    EXPECT_EQ(cache.rank(0).nan_count, 0);
+}
+
+TEST(RankCache, rank_with_nan) {
+    using namespace rank_in_range;
+    std::vector<float> ar({ 1, 2, 2, 3, std::numeric_limits<float>::quiet_NaN() });
+    RankCache<float> cache(ar.begin(), ar.end());
+    
+    EXPECT_EQ(cache.rank(0).rank_bg, 0);
+    EXPECT_EQ(cache.rank(0).rank_ed, 0);
+    EXPECT_EQ(cache.rank(1).rank_bg, 0);
+    EXPECT_EQ(cache.rank(1).rank_ed, 1);
+    EXPECT_EQ(cache.rank(2).rank_bg, 1);
+    EXPECT_EQ(cache.rank(2).rank_ed, 3);
+    EXPECT_EQ(cache.rank(3).rank_bg, 3);
+    EXPECT_EQ(cache.rank(3).rank_ed, 4);
+    EXPECT_EQ(cache.rank(4).rank_bg, 4);
+    EXPECT_EQ(cache.rank(4).rank_ed, 4);
+    
+    EXPECT_EQ(cache.rank(0).nan_count, 1);
 }
 
 TEST(Ranker, rank_in_one_range) {
@@ -134,23 +189,48 @@ TEST(Ranker, rank_in_range) {
     EXPECT_EQ(ranker.rank_in_range(4, 1, 4).rank_ed, 3);
 }
 
+TEST(Ranker, rank_in_range_with_nan) {
+    using namespace rank_in_range;
+    typedef std::vector<float> Array;
+    Array ar({ 1, 2, 2, 3, std::numeric_limits<float>::quiet_NaN() });
+    Ranker<float, Array::iterator> ranker(ar.begin());
+    
+    EXPECT_EQ(ranker.rank_in_range(0, 0, 5).rank_bg, 0);
+    EXPECT_EQ(ranker.rank_in_range(0, 0, 5).rank_ed, 0);
+    EXPECT_EQ(ranker.rank_in_range(1, 0, 5).rank_bg, 0);
+    EXPECT_EQ(ranker.rank_in_range(1, 0, 5).rank_ed, 1);
+    EXPECT_EQ(ranker.rank_in_range(2, 0, 5).rank_bg, 1);
+    EXPECT_EQ(ranker.rank_in_range(2, 0, 5).rank_ed, 3);
+    EXPECT_EQ(ranker.rank_in_range(3, 0, 5).rank_bg, 3);
+    EXPECT_EQ(ranker.rank_in_range(3, 0, 5).rank_ed, 4);
+    EXPECT_EQ(ranker.rank_in_range(4, 0, 5).rank_bg, 4);
+    EXPECT_EQ(ranker.rank_in_range(4, 0, 5).rank_ed, 4);
+    
+    EXPECT_EQ(ranker.rank_in_range(0, 0, 5).nan_count, 1);
+}
+
 TEST(Ranker, random_test) {
     using namespace rank_in_range;
-    typedef std::vector<int> Array;
+    typedef std::vector<float> Array;
     Array ar;
     std::mt19937 engine(0);
     std::uniform_int_distribution<> dist(0, 100);
     for (int i = 0; i < 10000; i++) {
-        ar.push_back(dist(engine));
+        auto x = dist(engine);
+        if (x == 0) {
+            x = std::numeric_limits<float>::quiet_NaN();
+        }
+        ar.push_back(x);
     }
-    Ranker<int, Array::iterator> ranker(ar.begin());
+    Ranker<float, Array::iterator> ranker(ar.begin());
 
     for (int w = 0; w < 1000; w++) {
-        for (int i = 0; i < ar.size() - w; i++) {
-            const auto result = ranker.rank_in_range(ar[i], i, i + w);
-            const auto reference_result = ranker.rank_in_range(ar[i], i, i + w, true);
+        for (int i = w; i < ar.size(); i++) {
+            const auto result = ranker.rank_in_range(ar[i], i, i - w);
+            const auto reference_result = ranker.rank_in_range(ar[i], i, i - w, true);
             EXPECT_EQ(result.rank_bg, reference_result.rank_bg);
             EXPECT_EQ(result.rank_ed, reference_result.rank_ed);
+            EXPECT_EQ(result.nan_count, reference_result.nan_count);
         }
     }
 }
